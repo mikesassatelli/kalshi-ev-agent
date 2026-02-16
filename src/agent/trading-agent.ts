@@ -131,12 +131,16 @@ export class TradingAgent {
       // Must be open
       if (m.status !== "open") return false;
 
-      // Must have some liquidity (both sides have prices)
+      // Must have some liquidity (at least one side has prices)
       if (m.yesAsk === 0 && m.yesBid === 0) return false;
 
-      // Skip extreme prices (near 0 or 100 — low edge potential)
-      const midPrice = (m.yesAsk + m.yesBid) / 2;
-      if (midPrice < 5 || midPrice > 95) return false;
+      // Skip extreme prices (near 0 or 100 — low edge potential).
+      // Use yesAsk as the price signal when yesBid is 0 (common for
+      // illiquid markets where the bid side of the book is empty).
+      const price = (m.yesBid > 0 && m.yesAsk > 0)
+        ? (m.yesAsk + m.yesBid) / 2
+        : (m.yesAsk || m.yesBid);
+      if (price < 5 || price > 95) return false;
 
       // Must have some volume
       if (m.volume < 10) return false;
