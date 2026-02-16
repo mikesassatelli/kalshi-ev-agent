@@ -201,13 +201,32 @@ export class KalshiClient {
   // --- Helpers ---
 
   private mapMarket(raw: any): KalshiMarket {
+    // Kalshi API statuses: initialized, inactive, active, closed,
+    // determined, disputed, amended, finalized.
+    // Normalize to our simpler vocabulary.
+    let status: KalshiMarket["status"];
+    switch (raw.status) {
+      case "active":
+        status = "open";
+        break;
+      case "closed":
+        status = "closed";
+        break;
+      case "determined":
+      case "finalized":
+        status = "settled";
+        break;
+      default:
+        status = "closed"; // initialized, inactive, disputed, amended
+    }
+
     return {
       ticker: raw.ticker,
       eventTicker: raw.event_ticker ?? "",
       title: raw.title ?? raw.subtitle ?? raw.ticker,
       subtitle: raw.subtitle,
       category: raw.category ?? "",
-      status: raw.status ?? "open",
+      status,
       yesAsk: raw.yes_ask ?? 0,
       yesBid: raw.yes_bid ?? 0,
       noAsk: raw.no_ask ?? 0,
