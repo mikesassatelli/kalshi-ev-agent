@@ -5,3 +5,4 @@ logs/
 keys/
 *.pem
 *.key
+.idea/
