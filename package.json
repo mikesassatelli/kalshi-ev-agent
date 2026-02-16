@@ -1,0 +1,31 @@
+{
+  "name": "kalshi-ev-agent",
+  "version": "0.1.0",
+  "description": "Automated expected-value trading agent for Kalshi prediction markets",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "scan": "tsx src/cli/scan.ts",
+    "paper-trade": "tsx src/cli/paper-trade.ts",
+    "backtest": "tsx src/cli/backtest.ts",
+    "lint": "eslint src/",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "kalshi-typescript": "^0.1.0",
+    "dotenv": "^16.4.5",
+    "winston": "^3.14.0",
+    "anthropic": "^0.1.0",
+    "cron": "^3.1.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.16.0",
+    "@types/node": "^22.0.0",
+    "vitest": "^2.0.0",
+    "eslint": "^9.0.0"
+  }
+}

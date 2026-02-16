@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="kalshi-ev-agent">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/kalshi-ev-agent.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
