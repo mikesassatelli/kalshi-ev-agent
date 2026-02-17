@@ -60,8 +60,13 @@ export class EdgeDetector {
   }
 
   /**
-   * Quick arbitrage check: find markets where YES + NO prices
-   * don't sum to ~$1 (free money or mispricing).
+   * Arbitrage check: find markets where buying both YES + NO
+   * costs less than the $1 payout (guaranteed profit), and flag
+   * markets with unusually wide bid-ask spreads.
+   *
+   * In binary markets, no_ask ≈ 100 - yes_bid, so
+   * yes_ask + no_ask ≈ 100 + spread. Values > 100 are normal.
+   * Only yes_ask + no_ask < 100 represents a true arbitrage.
    */
   findArbitrageOpportunities(markets: KalshiMarket[]): Array<{
     ticker: string;
@@ -69,7 +74,7 @@ export class EdgeDetector {
     yesAsk: number;
     noAsk: number;
     total: number;
-    type: "guaranteed_profit" | "overpriced";
+    type: "guaranteed_profit" | "wide_spread";
   }> {
     const opps: Array<{
       ticker: string;
@@ -77,14 +82,15 @@ export class EdgeDetector {
       yesAsk: number;
       noAsk: number;
       total: number;
-      type: "guaranteed_profit" | "overpriced";
+      type: "guaranteed_profit" | "wide_spread";
     }> = [];
 
     for (const m of markets) {
       if (m.yesAsk === 0 || m.noAsk === 0) continue;
       const total = m.yesAsk + m.noAsk;
 
-      // If YES ask + NO ask < 100, buying both guarantees profit
+      // True arbitrage: buy both sides for < $1 total, guaranteed $1 payout.
+      // Use < 98 to account for Kalshi's ~1-2¢ fees per side.
       if (total < 98) {
         opps.push({
           ticker: m.ticker,
@@ -95,21 +101,31 @@ export class EdgeDetector {
           type: "guaranteed_profit",
         });
       }
-      // If > 102, the spread is very wide (informational)
-      if (total > 105) {
+
+      // Wide spread: only flag if both sides have real liquidity
+      // (skip one-sided books where ask = 99 or 100) and spread > 15¢.
+      if (total > 115 && m.yesAsk < 95 && m.noAsk < 95) {
         opps.push({
           ticker: m.ticker,
           title: m.title,
           yesAsk: m.yesAsk,
           noAsk: m.noAsk,
           total,
-          type: "overpriced",
+          type: "wide_spread",
         });
       }
     }
 
+    // Sort: guaranteed profits first (lowest total), then widest spreads
+    opps.sort((a, b) => {
+      if (a.type !== b.type) return a.type === "guaranteed_profit" ? -1 : 1;
+      return a.type === "guaranteed_profit" ? a.total - b.total : b.total - a.total;
+    });
+
     if (opps.length > 0) {
-      this.logger.info(`Found ${opps.length} arbitrage/spread anomalies`);
+      const profits = opps.filter((o) => o.type === "guaranteed_profit").length;
+      const wide = opps.filter((o) => o.type === "wide_spread").length;
+      this.logger.info(`Found ${profits} arbitrage opportunities, ${wide} wide spreads`);
     }
 
     return opps;

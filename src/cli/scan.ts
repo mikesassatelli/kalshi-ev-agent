@@ -24,15 +24,34 @@ async function main() {
   const markets = await kalshi.getAllOpenMarkets();
   logger.info(`Found ${markets.length} open markets`);
 
-  // 2. Filter
-  const candidates = markets
-    .filter((m) => m.status === "open")
-    .filter((m) => m.volume >= 10)
-    .filter((m) => {
-      const mid = (m.yesAsk + m.yesBid) / 2;
-      return mid > 5 && mid < 95;
-    })
-    .slice(0, 15); // Limit LLM calls
+  // 2. Filter with diagnostic logging
+  const open = markets.filter((m) => m.status === "open");
+  logger.info(`  Filter: status=open → ${open.length}`);
+
+  const hasPrice = open.filter((m) => m.yesAsk > 0 || m.yesBid > 0);
+  logger.info(`  Filter: has price data → ${hasPrice.length}`);
+
+  const hasVolume = hasPrice.filter((m) => m.volume >= 10);
+  logger.info(`  Filter: volume >= 10 → ${hasVolume.length}`);
+
+  // Use yesAsk as the price signal; yesBid is often 0 on illiquid markets.
+  // Fall back to midpoint only when both sides are populated.
+  const priceFiltered = hasVolume.filter((m) => {
+    const price = (m.yesBid > 0 && m.yesAsk > 0)
+      ? (m.yesAsk + m.yesBid) / 2   // true midpoint when book has both sides
+      : (m.yesAsk || m.yesBid);      // use whichever side is available
+    return price > 5 && price < 95;
+  });
+  logger.info(`  Filter: price 5-95¢ → ${priceFiltered.length}`);
+
+  // Log sample of first few filtered markets for debugging
+  for (const m of priceFiltered.slice(0, 3)) {
+    logger.debug(
+      `  Sample: ${m.ticker} yesAsk=${m.yesAsk} yesBid=${m.yesBid} noAsk=${m.noAsk} noBid=${m.noBid} vol=${m.volume}`
+    );
+  }
+
+  const candidates = priceFiltered.slice(0, 15); // Limit LLM calls
 
   logger.info(`Forecasting ${candidates.length} candidates...`);
 
@@ -66,12 +85,29 @@ async function main() {
   }
 
   if (arbs.length > 0) {
-    console.log(`\n  ARBITRAGE ANOMALIES (${arbs.length} found):\n`);
-    for (const arb of arbs) {
-      console.log(
-        `  ${arb.type === "guaranteed_profit" ? "💰" : "⚠️ "} ${arb.ticker.padEnd(35)} ` +
-          `YES: ${arb.yesAsk}¢ + NO: ${arb.noAsk}¢ = ${arb.total}¢`
-      );
+    const profits = arbs.filter((a) => a.type === "guaranteed_profit");
+    const wide = arbs.filter((a) => a.type === "wide_spread");
+
+    if (profits.length > 0) {
+      console.log(`\n  ARBITRAGE OPPORTUNITIES (${profits.length} found):\n`);
+      for (const arb of profits.slice(0, 16)) {
+        console.log(
+          `  💰 ${arb.ticker.padEnd(35)} ` +
+            `YES: ${arb.yesAsk}¢ + NO: ${arb.noAsk}¢ = ${arb.total}¢ → ${100 - arb.total}¢ free`
+        );
+      }
+      if (profits.length > 16) console.log(`  ... and ${profits.length - 16} more`);
+    }
+
+    if (wide.length > 0) {
+      console.log(`\n  WIDE SPREADS (${wide.length} found — informational):\n`);
+      for (const arb of wide.slice(0, 10)) {
+        console.log(
+          `  ⚠️  ${arb.ticker.padEnd(35)} ` +
+            `spread: ${arb.total - 100}¢ (YES ask: ${arb.yesAsk}¢, NO ask: ${arb.noAsk}¢)`
+        );
+      }
+      if (wide.length > 10) console.log(`  ... and ${wide.length - 10} more`);
     }
   }
 
