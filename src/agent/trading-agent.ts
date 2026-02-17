@@ -8,6 +8,7 @@ import { LLMForecaster } from "../forecaster/llm-forecaster.js";
 import { EdgeDetector } from "./edge-detector.js";
 import { RiskManager } from "../risk/risk-manager.js";
 import { PaperTrader } from "./paper-trader.js";
+import { isLLMForecastable, hasTightSpread, selectDiverseCandidates } from "../utils/market-filter.js";
 import type { Logger } from "../utils/logger.js";
 
 export type ExecutionMode = "paper" | "live";
@@ -64,8 +65,10 @@ export class TradingAgent {
       }
 
       // 4. Forecast probabilities (LLM calls — this is the expensive part)
-      // Limit to top N candidates to control API costs
-      const topCandidates = filtered.slice(0, 10);
+      // Skip markets the LLM can't forecast well and illiquid markets,
+      // then pick diverse candidates across event groups
+      const forecastable = filtered.filter((m) => isLLMForecastable(m) && hasTightSpread(m));
+      const topCandidates = selectDiverseCandidates(forecastable, 10);
       const forecasts = await this.forecaster.forecastBatch(topCandidates);
 
       // 5. Detect edges
