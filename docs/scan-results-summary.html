@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: letter; margin: 1in; }
+  body { font-family: Georgia, 'Times New Roman', serif; font-size: 13pt; line-height: 1.6; color: #222; }
+  h1 { font-size: 22pt; margin-bottom: 4pt; color: #1a1a2e; }
+  h2 { font-size: 15pt; margin-top: 18pt; margin-bottom: 6pt; color: #16213e; border-bottom: 1px solid #ccc; padding-bottom: 3pt; }
+  .subtitle { font-size: 11pt; color: #666; margin-bottom: 20pt; }
+  p { margin: 8pt 0; }
+  table { width: 100%; border-collapse: collapse; margin: 10pt 0; font-size: 11pt; }
+  th { background: #1a1a2e; color: white; padding: 6pt 8pt; text-align: left; }
+  td { padding: 5pt 8pt; border-bottom: 1px solid #ddd; }
+  tr:nth-child(even) { background: #f8f8f8; }
+  .highlight { background: #e8f5e9; font-weight: bold; }
+  .callout { background: #f0f4ff; border-left: 4px solid #1a1a2e; padding: 10pt 14pt; margin: 14pt 0; border-radius: 0 4pt 4pt 0; }
+  .footer { font-size: 9pt; color: #999; margin-top: 20pt; border-top: 1px solid #ddd; padding-top: 6pt; }
+</style>
+</head>
+<body>
+
+<h1>Kalshi Prediction Market Scanner &mdash; Results Summary</h1>
+<div class="subtitle">February 17, 2026 &nbsp;|&nbsp; Mike Sassatelli</div>
+
+<h2>What Is This?</h2>
+<p>
+We built a program that scans thousands of prediction markets on Kalshi (a regulated exchange where people bet on real-world events) and looks for prices that seem wrong. It uses an AI model (Claude) to estimate the true probability of each event, then compares that estimate to what the market is charging. When the AI thinks the market price is significantly off, it flags it as an opportunity.
+</p>
+
+<h2>How It Works (3 Steps)</h2>
+<p>
+<strong>1. Filter.</strong> We start with over 30,000 open markets and narrow them down. We throw out markets with no trading activity, extreme prices, markets that need real-time data we don't have (like tomorrow's weather), and markets where nobody is willing to buy or sell at reasonable prices. This leaves us with about 765 quality candidates.
+</p>
+<p>
+<strong>2. Forecast.</strong> We pick 15 diverse markets across different topics &mdash; politics, sports, economics, entertainment, tech &mdash; and ask Claude to estimate the probability of each event. Claude searches the web for current news and data before making each estimate, giving it access to information the market might not have priced in yet.
+</p>
+<p>
+<strong>3. Find edges.</strong> We compare Claude's estimates to the actual market prices. If Claude thinks an event is 95% likely but the market is only charging 30&cent;, that's a potential 65% "edge" &mdash; meaning we might be getting a bargain.
+</p>
+
+<h2>What We Found</h2>
+<p>Out of 15 markets analyzed, we found <strong>13 potential edges</strong>. Here are the most interesting ones:</p>
+
+<table>
+  <tr><th>Market</th><th>What We Think</th><th>Market Price</th><th>Edge</th></tr>
+  <tr class="highlight"><td>Ramp acquires Brex by 2040</td><td>95% likely</td><td>15&cent;</td><td>+80%</td></tr>
+  <tr class="highlight"><td>Trump says [X] by March</td><td>95% likely</td><td>30&cent;</td><td>+65%</td></tr>
+  <tr><td>Next Iran leader (not Salar)</td><td>92% likely</td><td>15&cent;</td><td>+77%</td></tr>
+  <tr><td>Cape Verde won't beat Spain (World Cup)</td><td>97% likely</td><td>24&cent;</td><td>+73%</td></tr>
+  <tr><td>Al Hilal wins (AFC Champions League)</td><td>99% likely</td><td>57&cent;</td><td>+42%</td></tr>
+  <tr><td>Airtable IPO by 2030</td><td>72% likely</td><td>54&cent;</td><td>+18%</td></tr>
+  <tr><td>GDP above 3.5% by April</td><td>25% likely</td><td>37&cent;</td><td>+12%</td></tr>
+</table>
+
+<div class="callout">
+<strong>Key insight:</strong> Adding real-time web search to the AI dramatically improved forecast quality. Without web search, the AI's average confidence in its own estimates was about 35%. With web search, it jumped to 77% &mdash; because the AI could look up current news, recent game results, and economic data before making its prediction.
+</div>
+
+<h2>What's Next</h2>
+<p>
+The scanner is working and finding opportunities across diverse markets. The next step is to run it in "paper trading" mode &mdash; making simulated bets with fake money to track whether the edges it finds actually turn into profits over time, before risking any real money.
+</p>
+
+<div class="footer">
+Built with TypeScript, Kalshi API, and Claude (Anthropic). Scanner runs in ~20 minutes with web search enabled.
+</div>
+
+</body>
+</html>
