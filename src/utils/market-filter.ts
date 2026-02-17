@@ -14,6 +14,12 @@ const REALTIME_DEPENDENT_PATTERNS = [
   /^KXQUICKSETTLE/i,    // quick-settle markets (minutes-long)
 ];
 
+// Maximum bid-ask spread (in cents) for a market to be considered tradeable.
+// yesAsk + noAsk = 100 + spread. A 25¢ spread is generous — most liquid
+// markets have 2-10¢. Wider spreads mean the market is untradeable at
+// anything close to fair value.
+const MAX_SPREAD_CENTS = 25;
+
 /**
  * Returns true if a market is suitable for LLM forecasting.
  * Filters out markets where the model has no informational edge:
@@ -21,6 +27,26 @@ const REALTIME_DEPENDENT_PATTERNS = [
  */
 export function isLLMForecastable(market: KalshiMarket): boolean {
   return !REALTIME_DEPENDENT_PATTERNS.some((p) => p.test(market.ticker));
+}
+
+/**
+ * Returns true if the market has a tight enough spread to be tradeable.
+ * Markets with yesAsk + noAsk > 125 (i.e., 25¢+ spread) produce
+ * phantom edges because mid-price is far from any executable price.
+ */
+export function hasTightSpread(market: KalshiMarket): boolean {
+  // Need both sides quoted to check spread
+  if (market.yesAsk <= 0 || market.noAsk <= 0) return true; // can't check, allow through
+  return (market.yesAsk + market.noAsk) <= (100 + MAX_SPREAD_CENTS);
+}
+
+/**
+ * Returns the grouping key for a market (for diversification).
+ * Kalshi API doesn't return category on market objects — it's on events.
+ * Fall back to event ticker prefix as a proxy for topic diversity.
+ */
+export function getMarketGroup(market: KalshiMarket): string {
+  return market.category || market.eventTicker.split("-")[0] || "other";
 }
 
 /**
@@ -35,10 +61,10 @@ export function selectDiverseCandidates(
   // Sort by volume descending so we pick the most liquid first
   const sorted = [...markets].sort((a, b) => b.volume - a.volume);
 
-  // Group by category (fall back to event ticker prefix if empty)
+  // Group by category or event ticker prefix
   const groups = new Map<string, KalshiMarket[]>();
   for (const m of sorted) {
-    const key = m.category || m.eventTicker.split("-")[0] || "other";
+    const key = getMarketGroup(m);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(m);
   }

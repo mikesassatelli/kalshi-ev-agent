@@ -133,18 +133,16 @@ export class EdgeDetector {
 
   // --- Helpers ---
 
+  /**
+   * Get the implied probability = the price you'd actually pay to acquire the position.
+   * Uses the ask price (not the mid-price) because that's the real cost of the trade.
+   * Mid-price is a phantom number on illiquid markets — you can't transact there.
+   */
   private getImpliedProb(market: KalshiMarket, side: "yes" | "no"): number {
     if (side === "yes") {
-      // Use midpoint; if no bid, use ask; if no ask, use bid
-      if (market.yesBid > 0 && market.yesAsk > 0) {
-        return ((market.yesBid + market.yesAsk) / 2) / 100;
-      }
-      return (market.yesAsk || market.yesBid || 50) / 100;
+      return (market.yesAsk || 50) / 100;
     } else {
-      if (market.noBid > 0 && market.noAsk > 0) {
-        return ((market.noBid + market.noAsk) / 2) / 100;
-      }
-      return (market.noAsk || market.noBid || 50) / 100;
+      return (market.noAsk || 50) / 100;
     }
   }
 

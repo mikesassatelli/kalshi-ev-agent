@@ -8,7 +8,7 @@ import { createLogger } from "../utils/logger.js";
 import { KalshiClient } from "../api/kalshi-client.js";
 import { LLMForecaster } from "../forecaster/llm-forecaster.js";
 import { EdgeDetector } from "../agent/edge-detector.js";
-import { isLLMForecastable, selectDiverseCandidates } from "../utils/market-filter.js";
+import { isLLMForecastable, hasTightSpread, selectDiverseCandidates, getMarketGroup } from "../utils/market-filter.js";
 
 async function main() {
   const config = loadConfig();
@@ -49,17 +49,22 @@ async function main() {
   const forecastable = priceFiltered.filter(isLLMForecastable);
   logger.info(`  Filter: LLM-forecastable → ${forecastable.length} (excluded ${priceFiltered.length - forecastable.length} real-time-dependent)`);
 
-  // Select diverse candidates across categories (not just first N)
-  const candidates = selectDiverseCandidates(forecastable, 15);
+  // Filter out illiquid markets with extreme spreads
+  const liquid = forecastable.filter(hasTightSpread);
+  logger.info(`  Filter: spread ≤ 25¢ → ${liquid.length} (excluded ${forecastable.length - liquid.length} illiquid)`);
 
-  // Log the category distribution
-  const catCounts = new Map<string, number>();
+  // Select diverse candidates across event groups (not just first N)
+  const candidates = selectDiverseCandidates(liquid, 15);
+
+  // Log the group distribution (Kalshi API doesn't return category on markets,
+  // so we use event ticker prefix as a proxy for topic diversity)
+  const groupCounts = new Map<string, number>();
   for (const m of candidates) {
-    const cat = m.category || "other";
-    catCounts.set(cat, (catCounts.get(cat) ?? 0) + 1);
+    const group = getMarketGroup(m);
+    groupCounts.set(group, (groupCounts.get(group) ?? 0) + 1);
   }
-  const catSummary = [...catCounts.entries()].map(([k, v]) => `${k}:${v}`).join(", ");
-  logger.info(`Forecasting ${candidates.length} candidates (${catSummary})`);
+  const groupSummary = [...groupCounts.entries()].map(([k, v]) => `${k}:${v}`).join(", ");
+  logger.info(`Forecasting ${candidates.length} diverse candidates across ${groupCounts.size} groups (${groupSummary})`);
 
   // 3. Forecast
   const forecasts = await forecaster.forecastBatch(candidates, undefined, 1500);
