@@ -12,8 +12,11 @@ You must:
 2. Identify the key factors that could push the probability up or down
 3. Consider the time horizon and how much could change
 4. Be well-calibrated: your 70% predictions should come true ~70% of the time
-5. Avoid anchoring to the current market price
+5. Avoid anchoring to the current market price — reason independently
 6. Think about what information the market might be missing or overweighting
+7. If you lack current information needed to forecast accurately, lower your confidence and note this in your reasoning
+
+IMPORTANT: Your training data has a knowledge cutoff. For questions about recent events, current data, or fast-moving situations, acknowledge what you don't know and reflect that uncertainty in both your probability and confidence scores. A low-confidence estimate is far more useful than a falsely precise one.
 
 Output your response as JSON with this exact structure:
 {
@@ -23,26 +26,57 @@ Output your response as JSON with this exact structure:
   "key_factors_yes": ["<factor 1>", "<factor 2>"],
   "key_factors_no": ["<factor 1>", "<factor 2>"],
   "base_rate_estimate": <number or null if not applicable>,
-  "information_edge": "<what might the market be missing>"
+  "information_edge": "<what might the market be missing, or null if you have no informational advantage>"
 }
 
 Be precise. Be calibrated. Don't hedge excessively — give your best estimate.`;
+
+const WEB_SEARCH_ADDENDUM = `
+
+You have access to web search. Use it to look up current information before forming your estimate — especially for questions about recent events, current polls, economic data, or anything that may have changed since your training data cutoff. Search first, then reason.`;
 
 export class LLMForecaster {
   private apiKey: string;
   private logger: Logger;
   private model = "claude-sonnet-4-20250514";
+  private useWebSearch: boolean;
 
   constructor(config: AgentConfig, logger: Logger) {
     this.apiKey = config.anthropic.apiKey;
     this.logger = logger;
+    this.useWebSearch = config.forecaster?.enableWebSearch ?? false;
+
+    if (this.useWebSearch) {
+      this.logger.info("Forecaster: web search enabled (adds ~$0.01/search + token costs)");
+    }
   }
 
   /** Generate a probability forecast for a single market */
   async forecast(market: KalshiMarket, context?: string): Promise<Forecast> {
     const userPrompt = this.buildPrompt(market, context);
+    const systemPrompt = this.useWebSearch
+      ? FORECASTER_SYSTEM_PROMPT + WEB_SEARCH_ADDENDUM
+      : FORECASTER_SYSTEM_PROMPT;
 
     this.logger.debug(`Forecasting: ${market.ticker} — ${market.title}`);
+
+    const body: Record<string, unknown> = {
+      model: this.model,
+      max_tokens: this.useWebSearch ? 4096 : 1500,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    };
+
+    // Enable Anthropic's server-side web search tool
+    if (this.useWebSearch) {
+      body.tools = [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 3,
+        },
+      ];
+    }
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -51,12 +85,7 @@ export class LLMForecaster {
         "x-api-key": this.apiKey,
         "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify({
-        model: this.model,
-        max_tokens: 1500,
-        system: FORECASTER_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -65,10 +94,22 @@ export class LLMForecaster {
     }
 
     const data: any = await response.json();
+
+    // Extract text blocks (the model's reasoning + JSON output)
     const text = data.content
       .filter((b: any) => b.type === "text")
       .map((b: any) => b.text)
       .join("\n");
+
+    // Extract source URLs from web search results (if any)
+    const sources: string[] = data.content
+      .filter((b: any) => b.type === "web_search_tool_result")
+      .flatMap((b: any) =>
+        (b.content || [])
+          .filter((r: any) => r.type === "web_search_result")
+          .map((r: any) => r.url)
+      )
+      .filter(Boolean);
 
     const parsed = this.parseResponse(text);
 
@@ -77,14 +118,15 @@ export class LLMForecaster {
       modelProbYes: parsed.probability,
       confidence: parsed.confidence,
       reasoning: parsed.reasoning,
-      sources: [],
+      sources,
       timestamp: new Date(),
     };
 
+    const searchNote = sources.length > 0 ? ` [${sources.length} sources]` : "";
     this.logger.info(
       `Forecast for ${market.ticker}: ${(forecast.modelProbYes * 100).toFixed(1)}% YES ` +
       `(confidence: ${(forecast.confidence * 100).toFixed(0)}%) — ` +
-      `market: ${market.yesAsk}¢`
+      `market: ${market.yesAsk}¢${searchNote}`
     );
 
     return forecast;

@@ -30,6 +30,9 @@ export function loadConfig(): AgentConfig {
         .split(",")
         .map((s) => s.trim()),
     },
+    forecaster: {
+      enableWebSearch: process.env.ENABLE_WEB_SEARCH === "true",
+    },
     logLevel: process.env.LOG_LEVEL ?? "info",
   };
 }

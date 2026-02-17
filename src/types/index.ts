@@ -104,5 +104,8 @@ export interface AgentConfig {
     scanIntervalSeconds: number;
     marketCategories: string[];
   };
+  forecaster?: {
+    enableWebSearch: boolean;
+  };
   logLevel: string;
 }

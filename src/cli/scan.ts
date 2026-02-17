@@ -8,6 +8,7 @@ import { createLogger } from "../utils/logger.js";
 import { KalshiClient } from "../api/kalshi-client.js";
 import { LLMForecaster } from "../forecaster/llm-forecaster.js";
 import { EdgeDetector } from "../agent/edge-detector.js";
+import { isLLMForecastable, selectDiverseCandidates } from "../utils/market-filter.js";
 
 async function main() {
   const config = loadConfig();
@@ -44,16 +45,21 @@ async function main() {
   });
   logger.info(`  Filter: price 5-95¢ → ${priceFiltered.length}`);
 
-  // Log sample of first few filtered markets for debugging
-  for (const m of priceFiltered.slice(0, 3)) {
-    logger.debug(
-      `  Sample: ${m.ticker} yesAsk=${m.yesAsk} yesBid=${m.yesBid} noAsk=${m.noAsk} noBid=${m.noBid} vol=${m.volume}`
-    );
+  // Skip markets where LLM has no informational edge (weather, 15-min crypto, etc.)
+  const forecastable = priceFiltered.filter(isLLMForecastable);
+  logger.info(`  Filter: LLM-forecastable → ${forecastable.length} (excluded ${priceFiltered.length - forecastable.length} real-time-dependent)`);
+
+  // Select diverse candidates across categories (not just first N)
+  const candidates = selectDiverseCandidates(forecastable, 15);
+
+  // Log the category distribution
+  const catCounts = new Map<string, number>();
+  for (const m of candidates) {
+    const cat = m.category || "other";
+    catCounts.set(cat, (catCounts.get(cat) ?? 0) + 1);
   }
-
-  const candidates = priceFiltered.slice(0, 15); // Limit LLM calls
-
-  logger.info(`Forecasting ${candidates.length} candidates...`);
+  const catSummary = [...catCounts.entries()].map(([k, v]) => `${k}:${v}`).join(", ");
+  logger.info(`Forecasting ${candidates.length} candidates (${catSummary})`);
 
   // 3. Forecast
   const forecasts = await forecaster.forecastBatch(candidates, undefined, 1500);
