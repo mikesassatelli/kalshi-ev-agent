@@ -35,6 +35,8 @@ const WEB_SEARCH_ADDENDUM = `
 
 You have access to web search. Use it to look up current information before forming your estimate — especially for questions about recent events, current polls, economic data, or anything that may have changed since your training data cutoff. Search first, then reason.`;
 
+const MAX_RETRIES = 3;
+
 export class LLMForecaster {
   private apiKey: string;
   private logger: Logger;
@@ -78,22 +80,8 @@ export class LLMForecaster {
       ];
     }
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Anthropic API error ${response.status}: ${err}`);
-    }
-
-    const data: any = await response.json();
+    // Call API with retry on rate limits
+    const data = await this.callWithRetry(body, market.ticker);
 
     // Extract text blocks (the model's reasoning + JSON output)
     const text = data.content
@@ -136,20 +124,76 @@ export class LLMForecaster {
   async forecastBatch(
     markets: KalshiMarket[],
     context?: string,
-    delayMs = 1000
+    delayMs?: number
   ): Promise<Forecast[]> {
+    // Web search forecasts consume ~15-25k tokens each; with a 30k/min
+    // rate limit we need ~60s between calls. Without web search, 1s is fine.
+    const effectiveDelay = delayMs ?? (this.useWebSearch ? 60_000 : 1000);
+
+    if (this.useWebSearch) {
+      this.logger.info(
+        `Web search mode: ${effectiveDelay / 1000}s delay between forecasts ` +
+        `(~${Math.ceil(markets.length * effectiveDelay / 60_000)} min for ${markets.length} markets)`
+      );
+    }
+
     const forecasts: Forecast[] = [];
-    for (const market of markets) {
+    for (let i = 0; i < markets.length; i++) {
+      const market = markets[i];
       try {
         const forecast = await this.forecast(market, context);
         forecasts.push(forecast);
-        // Rate limit courtesy delay
-        if (delayMs > 0) await sleep(delayMs);
+        // Rate limit courtesy delay (skip after last market)
+        if (effectiveDelay > 0 && i < markets.length - 1) {
+          await sleep(effectiveDelay);
+        }
       } catch (err) {
         this.logger.error(`Forecast failed for ${market.ticker}: ${err}`);
       }
     }
     return forecasts;
+  }
+
+  /** Call the Anthropic API with retry + exponential backoff on 429s */
+  private async callWithRetry(body: Record<string, unknown>, ticker: string): Promise<any> {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (response.status === 429) {
+        if (attempt === MAX_RETRIES) {
+          const err = await response.text();
+          throw new Error(`Rate limited after ${MAX_RETRIES} retries: ${err}`);
+        }
+
+        // Use retry-after header if available, otherwise exponential backoff
+        const retryAfterSec = parseInt(response.headers.get("retry-after") || "0", 10);
+        const backoffMs = retryAfterSec > 0
+          ? retryAfterSec * 1000
+          : Math.min(15_000 * Math.pow(2, attempt), 120_000); // 15s, 30s, 60s
+
+        this.logger.warn(
+          `Rate limited on ${ticker}, waiting ${(backoffMs / 1000).toFixed(0)}s ` +
+          `(attempt ${attempt + 1}/${MAX_RETRIES})`
+        );
+        await sleep(backoffMs);
+        continue;
+      }
+
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Anthropic API error ${response.status}: ${err}`);
+      }
+
+      return response.json();
+    }
   }
 
   private buildPrompt(market: KalshiMarket, context?: string): string {

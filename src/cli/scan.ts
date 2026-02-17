@@ -67,7 +67,7 @@ async function main() {
   logger.info(`Forecasting ${candidates.length} diverse candidates across ${groupCounts.size} groups (${groupSummary})`);
 
   // 3. Forecast
-  const forecasts = await forecaster.forecastBatch(candidates, undefined, 1500);
+  const forecasts = await forecaster.forecastBatch(candidates);
 
   // 4. Detect edges
   const edges = edgeDetector.detectEdges(candidates, forecasts);
