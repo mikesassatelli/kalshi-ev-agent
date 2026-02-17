@@ -15,17 +15,12 @@
     "test": "vitest"
   },
   "dependencies": {
-    "kalshi-typescript": "^0.1.0",
-    "dotenv": "^16.4.5",
-    "winston": "^3.14.0",
-    "anthropic": "^0.1.0",
-    "cron": "^3.1.7"
+    "dotenv": "^16.4.7",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "tsx": "^4.16.0",
-    "@types/node": "^22.0.0",
-    "vitest": "^2.0.0",
-    "eslint": "^9.0.0"
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.10.0"
   }
 }
